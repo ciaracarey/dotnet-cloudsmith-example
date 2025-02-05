@@ -51,13 +51,6 @@ jobs:
           echo '      <add key="ClearTextPassword" value="$CLOUDSMITH_API_KEY" />' >> NuGet.config
           echo '    </Cloudsmith>' >> NuGet.config
           echo '  </packageSourceCredentials>' >> NuGet.config
-          echo '  <config>' >> NuGet.config
-          echo '    <add key="signatureValidationMode" value="accept" />' >> NuGet.config
-          echo '  </config>' >> NuGet.config
-          echo '  <trustedSigners>' >> NuGet.config
-          echo '    <author name="Any" />' >> NuGet.config
-          echo '    <repository name="Any" serviceIndex="https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json" />' >> NuGet.config
-          echo '  </trustedSigners>' >> NuGet.config
           echo '</configuration>' >> NuGet.config
 
 
