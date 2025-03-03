@@ -12,7 +12,7 @@ permissions:
 
 env:
   CS_ORG: ciara-demo         # Your Cloudsmith organization/namespace
-  CS_REPO: acme-nonprod        # Your Cloudsmith repository slug
+  CS_REPO: acme-nonprod      # Your Cloudsmith repository slug
   SERVICE: ci_acme_service   # Your Cloudsmith OIDC 'Service Slug'
 
 jobs:
@@ -36,7 +36,17 @@ jobs:
           oidc-service-slug: ${{ env.SERVICE }}
           oidc-auth-only: 'true'
 
-      # 2) Create a NuGet.config that points to your Cloudsmith feed
+      # 2) Debug Cloudsmith Token
+      - name: Debug Cloudsmith Token
+        run: |
+          if [[ -z "$CLOUDSMITH_API_KEY" ]]; then
+            echo "❌ CLOUDSMITH_API_KEY is empty!"
+            exit 1
+          else
+            echo "✅ CLOUDSMITH_API_KEY is set."
+          fi
+
+      # 3) Create a NuGet.config that points to Cloudsmith feed
       - name: Create NuGet.config
         run: |
           echo '<?xml version="1.0" encoding="utf-8"?>' > NuGet.config
@@ -48,7 +58,7 @@ jobs:
           echo '  <packageSourceCredentials>' >> NuGet.config
           echo '    <Cloudsmith>' >> NuGet.config
           echo '      <add key="Username" value="token" />' >> NuGet.config
-          echo '      <add key="ClearTextPassword" value="${{ secrets.CLOUDSMITH_API_KEY }}" />' >> NuGet.config
+          echo '      <add key="ClearTextPassword" value="'$CLOUDSMITH_API_KEY'" />' >> NuGet.config
           echo '    </Cloudsmith>' >> NuGet.config
           echo '  </packageSourceCredentials>' >> NuGet.config
           echo '  <config>' >> NuGet.config
@@ -56,29 +66,29 @@ jobs:
           echo '  </config>' >> NuGet.config
           echo '</configuration>' >> NuGet.config
 
-      # 3) Restore .NET dependencies
+      # 4) Restore .NET dependencies
       - name: Restore
         run: dotnet restore MySolution.sln --configfile NuGet.config
 
-      # 4) List installed dependencies (debugging)
+      # 5) List installed dependencies (debugging)
       - name: List installed packages
         run: dotnet list MyProject package
 
-      # 5) Build the solution
+      # 6) Build the solution
       - name: Build
         run: dotnet build MySolution.sln --configuration Release --no-restore
 
-      # 6) (Optional) Run tests
+      # 7) (Optional) Run tests
       - name: Test
         run: dotnet test MySolution.sln --configuration Release --no-build
 
-      # 7) Pack the project into a .nupkg
+      # 8) Pack the project into a .nupkg
       - name: Pack
         run: dotnet pack MyProject/MyProject.csproj --configuration Release --output ./artifacts --no-build
 
-      # 8) Push the .nupkg to your Cloudsmith repository
+      # 9) Push the .nupkg to Cloudsmith
       - name: Push to Cloudsmith
         run: |
           dotnet nuget push ./artifacts/*.nupkg \
-            --api-key $CLOUDSMITH_API_KEY \
+            --api-key "$CLOUDSMITH_API_KEY" \
             --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json"
