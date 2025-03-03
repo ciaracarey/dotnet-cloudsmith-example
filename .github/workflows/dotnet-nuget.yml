@@ -36,17 +36,7 @@ jobs:
           oidc-service-slug: ${{ env.SERVICE }}
           oidc-auth-only: 'true'
 
-      # 2) Debug Cloudsmith Token
-      - name: Debug Cloudsmith Token
-        run: |
-          if [[ -z "$CLOUDSMITH_API_KEY" ]]; then
-            echo "❌ CLOUDSMITH_API_KEY is empty!"
-            exit 1
-          else
-            echo "✅ CLOUDSMITH_API_KEY is set."
-          fi
-
-      # 3) Create a NuGet.config that points to Cloudsmith feed
+      # 2) Create a NuGet.config that points to Cloudsmith feed
       - name: Create NuGet.config
         run: |
           echo '<?xml version="1.0" encoding="utf-8"?>' > NuGet.config
@@ -66,27 +56,27 @@ jobs:
           echo '  </config>' >> NuGet.config
           echo '</configuration>' >> NuGet.config
 
-      # 4) Restore .NET dependencies
+      # 3) Restore .NET dependencies
       - name: Restore
         run: dotnet restore MySolution.sln --configfile NuGet.config
 
-      # 5) List installed dependencies (debugging)
+      # 4) List installed dependencies (debugging)
       - name: List installed packages
         run: dotnet list MyProject package
 
-      # 6) Build the solution
+      # 5) Build the solution
       - name: Build
         run: dotnet build MySolution.sln --configuration Release --no-restore
 
-      # 7) (Optional) Run tests
+      # 6) (Optional) Run tests
       - name: Test
         run: dotnet test MySolution.sln --configuration Release --no-build
 
-      # 8) Pack the project into a .nupkg
+      # 7) Pack the project into a .nupkg
       - name: Pack
         run: dotnet pack MyProject/MyProject.csproj --configuration Release --output ./artifacts --no-build
 
-      # 9) Push the .nupkg to Cloudsmith
+      # 8) Push the .nupkg to Cloudsmith
       - name: Push to Cloudsmith
         run: |
           dotnet nuget push ./artifacts/*.nupkg \
