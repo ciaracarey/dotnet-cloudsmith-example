@@ -48,9 +48,12 @@ jobs:
           echo '  <packageSourceCredentials>' >> NuGet.config
           echo '    <Cloudsmith>' >> NuGet.config
           echo '      <add key="Username" value="token" />' >> NuGet.config
-          echo '      <add key="ClearTextPassword" value="$CLOUDSMITH_API_KEY" />' >> NuGet.config
+          echo '      <add key="ClearTextPassword" value="${{ secrets.CLOUDSMITH_API_KEY }}" />' >> NuGet.config
           echo '    </Cloudsmith>' >> NuGet.config
           echo '  </packageSourceCredentials>' >> NuGet.config
+          echo '  <config>' >> NuGet.config
+          echo '    <add key="signatureValidationMode" value="accept" />' >> NuGet.config
+          echo '  </config>' >> NuGet.config
           echo '</configuration>' >> NuGet.config
 
       # 3) Restore .NET dependencies
