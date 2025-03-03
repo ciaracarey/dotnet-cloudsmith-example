@@ -53,24 +53,27 @@ jobs:
           echo '  </packageSourceCredentials>' >> NuGet.config
           echo '</configuration>' >> NuGet.config
 
-
       # 3) Restore .NET dependencies
       - name: Restore
         run: dotnet restore MySolution.sln --configfile NuGet.config
 
-      # 4) Build the solution
+      # 4) List installed dependencies (debugging)
+      - name: List installed packages
+        run: dotnet list MyProject package
+
+      # 5) Build the solution
       - name: Build
         run: dotnet build MySolution.sln --configuration Release --no-restore
 
-      # 5) (Optional) Run tests
+      # 6) (Optional) Run tests
       - name: Test
         run: dotnet test MySolution.sln --configuration Release --no-build
 
-      # 6) Pack the project into a .nupkg
+      # 7) Pack the project into a .nupkg
       - name: Pack
         run: dotnet pack MyProject/MyProject.csproj --configuration Release --output ./artifacts --no-build
 
-      # 7) Push the .nupkg to your Cloudsmith repository
+      # 8) Push the .nupkg to your Cloudsmith repository
       - name: Push to Cloudsmith
         run: |
           dotnet nuget push ./artifacts/*.nupkg \
