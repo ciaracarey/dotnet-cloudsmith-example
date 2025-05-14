@@ -8,52 +8,102 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # OIDC with Cloudsmith
+  id-token: write        # OIDC with Cloudsmith
 
 env:
-  CS_ORG:   globex-innovations     # ← your org
-  CS_REPO:  acme-nonprod           # ← your repo
-  SERVICE:  ci_acme_service        # ← OIDC service slug
+  CS_ORG:   globex-innovations
+  CS_REPO:  acme-nonprod
+  SERVICE:  ci_acme_service
 
-jobs:                       # <── ONE jobs: key
+jobs:
   # ------------------------------------------------------------------
-  # 1) Your original build / test / push job (Ubuntu)
+  # 1) Build / pack / push on Ubuntu
   # ------------------------------------------------------------------
   build-and-publish:
     runs-on: ubuntu-latest
     steps:
+      # 0) Checkout
       - name: Checkout
         uses: actions/checkout@v4
-      # … all your existing steps stay here unchanged …
+
+      # 1) OIDC auth for a short-lived API key
+      - name: Authenticate with Cloudsmith (OIDC)
+        uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
+        with:
+          oidc-namespace:    ${{ env.CS_ORG }}
+          oidc-service-slug: ${{ env.SERVICE }}
+          oidc-auth-only:    'true'          # sets $CLOUDSMITH_API_KEY
+
+      # 2) NuGet.config that points at the v3 feed
+      - name: Create NuGet.config
+        run: |
+          cat > NuGet.config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear/>
+              <add key="Cloudsmith" value="https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json" />
+            </packageSources>
+            <packageSourceCredentials>
+              <Cloudsmith>
+                <add key="Username" value="token" />
+                <add key="ClearTextPassword" value="${CLOUDSMITH_API_KEY}" />
+              </Cloudsmith>
+            </packageSourceCredentials>
+          </configuration>
+          EOF
+
+      # 3) Restore
+      - name: Restore
+        run: dotnet restore MySolution.sln --configfile NuGet.config
+
+      # 4) Build
+      - name: Build
+        run: dotnet build MySolution.sln --configuration Release --no-restore
+
+      # 5) Pack (auto-version) — absolute output dir
+      - name: Pack (auto-version)
+        env:
+          VERSION_SUFFIX: "ci.${{ github.run_number }}"
+        run: |
+          mkdir -p ${{ github.workspace }}/artifacts
+          dotnet pack MyProject/MyProject.csproj \
+            -p:PackageVersion=1.0.0-$VERSION_SUFFIX \
+            --configuration Release \
+            --output ${{ github.workspace }}/artifacts \
+            --no-build
+
+      # 6) Push to Cloudsmith (skip dupes)
       - name: Push to Cloudsmith
         run: |
-          dotnet nuget push ./artifacts/*.nupkg \
+          dotnet nuget push ${{ github.workspace }}/artifacts/*.nupkg \
             --api-key "$CLOUDSMITH_API_KEY" \
-            --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json"
+            --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json" \
+            --skip-duplicate
 
   # ------------------------------------------------------------------
-  # 2) Smoke-test pulling the same package via the V2 endpoint (Windows)
+  # 2) Pull the same package via the v2 endpoint on Windows
   # ------------------------------------------------------------------
   pull-and-verify-v2:
     name: Pull package via NuGet v2 (OIDC)
     runs-on: windows-latest
-    needs: build-and-publish            # wait for publish to finish
+    needs: build-and-publish
 
     env:
-      CS_ORG: globex-innovations         # Your Cloudsmith organization/workspace
-      CS_REPO: acme-nonprod      # Your Cloudsmith repository slug
-      SERVICE: ci_acme_service   # Your Cloudsmith OIDC 'Service Slug'
+      CS_ORG:   globex-innovations
+      CS_REPO:  acme-nonprod
+      SERVICE:  ci_acme_service
 
     steps:
-      # 1) OIDC auth (same action you use above)
+      # 1) OIDC auth
       - name: Authenticate with Cloudsmith (OIDC)
         uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
         with:
-          oidc-namespace:     ${{ env.CS_ORG }}
-          oidc-service-slug:  ${{ env.SERVICE }}
-          oidc-auth-only:     'true'   # puts token in $CLOUDSMITH_API_KEY
+          oidc-namespace:    ${{ env.CS_ORG }}
+          oidc-service-slug: ${{ env.SERVICE }}
+          oidc-auth-only:    'true'
 
-      # 2) Add the v2 feed to nuget.exe
+      # 2) Add the v2 feed
       - name: Add Cloudsmith v2 source
         shell: pwsh
         run: |
@@ -65,12 +115,12 @@ jobs:                       # <── ONE jobs: key
             -StorePasswordInClearText
           nuget.exe sources List
 
-      # 3) Clear caches (belt-and-braces)
+      # 3) Clear caches
       - name: Clear NuGet caches
         shell: pwsh
         run: nuget.exe locals all -clear
 
-      # 4) Install the package through v2
+      # 4) Install through v2
       - name: Install package from v2
         shell: pwsh
         run: |
