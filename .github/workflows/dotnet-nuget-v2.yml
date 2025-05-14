@@ -1,31 +1,80 @@
-# .github/workflows/dotnet-build-publish.yml
-# (append after your existing build-and-publish job)
+name: .NET Build and Publish
 
-  test-consume-v2:
-    name: Pull package via NuGet v2
-    runs-on: windows-latest            # nuget.exe is pre-installed on the MS-hosted runner
-    needs: build-and-publish           # waits for the package push to finish
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  id-token: write  # OIDC with Cloudsmith
+
+env:
+  CS_ORG:   globex-innovations     # ← your org
+  CS_REPO:  acme-nonprod           # ← your repo
+  SERVICE:  ci_acme_service        # ← OIDC service slug
+
+jobs:                       # <── ONE jobs: key
+  # ------------------------------------------------------------------
+  # 1) Your original build / test / push job (Ubuntu)
+  # ------------------------------------------------------------------
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      # … all your existing steps stay here unchanged …
+      - name: Push to Cloudsmith
+        run: |
+          dotnet nuget push ./artifacts/*.nupkg \
+            --api-key "$CLOUDSMITH_API_KEY" \
+            --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json"
+
+  # ------------------------------------------------------------------
+  # 2) Smoke-test pulling the same package via the V2 endpoint (Windows)
+  # ------------------------------------------------------------------
+  pull-and-verify-v2:
+    name: Pull package via NuGet v2 (OIDC)
+    runs-on: windows-latest
+    needs: build-and-publish            # wait for publish to finish
+
     env:
-      CS_ORG:  ${{ env.CS_ORG }}
-      CS_REPO: ${{ env.CS_REPO }}
+      CS_ORG: globex-innovations         # Your Cloudsmith organization/workspace
+      CS_REPO: acme-nonprod      # Your Cloudsmith repository slug
+      SERVICE: ci_acme_service   # Your Cloudsmith OIDC 'Service Slug'
 
     steps:
-      - name: Set up Cloudsmith v2 source
+      # 1) OIDC auth (same action you use above)
+      - name: Authenticate with Cloudsmith (OIDC)
+        uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
+        with:
+          oidc-namespace:     ${{ env.CS_ORG }}
+          oidc-service-slug:  ${{ env.SERVICE }}
+          oidc-auth-only:     'true'   # puts token in $CLOUDSMITH_API_KEY
+
+      # 2) Add the v2 feed to nuget.exe
+      - name: Add Cloudsmith v2 source
+        shell: pwsh
         run: |
-          nuget sources Add ^
-            -Name CloudsmithV2 ^
-            -Source "https://nuget.cloudsmith.io/%CS_ORG%/%CS_REPO%/v2/" ^
-            -Username token ^
-            -Password "$env:CLOUDSMITH_API_KEY" ^
+          nuget.exe sources Add `
+            -Name CloudsmithV2 `
+            -Source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v2/" `
+            -Username token `
+            -Password "$Env:CLOUDSMITH_API_KEY" `
             -StorePasswordInClearText
-          nuget sources List
+          nuget.exe sources List
 
-      - name: Clear local NuGet caches (sanity)
-        run: nuget locals all -clear
+      # 3) Clear caches (belt-and-braces)
+      - name: Clear NuGet caches
+        shell: pwsh
+        run: nuget.exe locals all -clear
 
-      - name: Install test package from v2
+      # 4) Install the package through v2
+      - name: Install package from v2
+        shell: pwsh
         run: |
-          nuget install Microgame.Commission.Domain `
+          nuget.exe install Microgame.Commission.Domain `
             -Version 12.9.9-CS-TEST-feature.STSK0132743 `
             -Source CloudsmithV2 `
             -OutputDirectory .\packages `
