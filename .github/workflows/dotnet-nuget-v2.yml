@@ -64,13 +64,7 @@ jobs:
   pull-v2:
     needs: push-v2
     runs-on: windows-latest
-    env:
-      CS_ORG:   ${{ env.CS_ORG }}
-      CS_REPO:  ${{ env.CS_REPO }}
-      SERVICE:  ${{ env.SERVICE }}
-      PACKAGE_ID:  ${{ env.PACKAGE_ID }}
-      PACKAGE_VER: ${{ needs.push-v2.outputs.pkg_version }}
-
+    
     steps:
       - uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
         with:
