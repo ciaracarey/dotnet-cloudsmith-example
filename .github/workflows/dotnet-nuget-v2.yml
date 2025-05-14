@@ -35,19 +35,15 @@ jobs:
         with: { dotnet-version: '7.0.x' }
 
       - name: Create dummy lib
-        run: |
-          dotnet new classlib -n ${{ env.PACKAGE_ID }} --force
-          mv -f ${{ env.PACKAGE_ID }} ${{ env.PACKAGE_ID }}.src
+        run: dotnet new classlib -n ${{ env.PACKAGE_ID }} --force
 
-      # pack with MIXED-CASE prerelease using run_number
       - name: Pack version
         id: meta
         run: |
           VERSION="1.0.0-CSTEST-${{ github.run_number }}"
-          dotnet pack ${{ env.PACKAGE_ID }}.src/${{ env.PACKAGE_ID }}.src.csproj \
+          dotnet pack ${{ env.PACKAGE_ID }}/${{ env.PACKAGE_ID }}.csproj \
             -p:PackageVersion=$VERSION \
             --output ./out
-          echo "Packed $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       # PUSH via v2  
