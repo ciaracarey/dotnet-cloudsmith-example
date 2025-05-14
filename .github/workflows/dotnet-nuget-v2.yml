@@ -43,8 +43,10 @@ jobs:
         with: { dotnet-version: '7.0.x' }
 
       # overwrite/refresh the dummy project
-      - name: Create dummy lib
-        run: dotnet new classlib -n ${{ env.PACKAGE_ID }} --force
+      - name: Create / clean dummy lib
+        run: |
+          dotnet new classlib -n ${{ env.PACKAGE_ID }} --force
+          rm -f ${{ env.PACKAGE_ID }}/Program.cs   # remove console stub if present
 
       - name: Pack
         id: pack
