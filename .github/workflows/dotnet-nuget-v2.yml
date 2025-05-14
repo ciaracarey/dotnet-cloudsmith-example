@@ -50,14 +50,14 @@ jobs:
           echo "Packed $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      # PUSH via v2  👈
+      # PUSH via v2  
       - name: Push to Cloudsmith (/v2/)
+        continue-on-error: true            # let pipeline carry on after 409
         run: |
           dotnet nuget push ./out/*.nupkg \
-            --api-key "$CLOUDSMITH_API_KEY" \
-            --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v2/" \
-            --skip-duplicate
-
+          --api-key "$CLOUDSMITH_API_KEY" \
+          --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v2/" \
+          --skip-duplicate
 # ------------------------------------------------------------------
 # 2) Pull the same package THROUGH /v2/ (Windows) – expected 404
 # ------------------------------------------------------------------
