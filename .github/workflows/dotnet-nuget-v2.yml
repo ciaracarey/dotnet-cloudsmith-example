@@ -1,72 +1,79 @@
-name: NuGet v2 mixed-case bug repro (push & pull via /v2/)
+name: NuGet v2 test (push & pull)
 
-on:
-  workflow_dispatch: {}          # run manually
+on: workflow_dispatch: {}
 
 permissions:
   contents: read
-  id-token: write                # OIDC for Cloudsmith
+  id-token: write    # OIDC for Cloudsmith
 
 env:
   CS_ORG:   globex-innovations
   CS_REPO:  acme-nonprod
   SERVICE:  ci_acme_service
-  PACKAGE_ID: MyProject          # dummy project name
+  PACKAGE_ID: MyProject
+
+  # ───── pick ONE of the next two lines ─────
+  PACKAGE_VER: 1.0.0-CSTEST-${{ github.run_number }}   # ← repro mixed-case bug
+  #PACKAGE_VER: 1.0.0-ci.23                            # ← package already in repo
 
 jobs:
-# ------------------------------------------------------------------
-# 1) Pack and push THROUGH /v2/  (Ubuntu)
-# ------------------------------------------------------------------
+# ────────────────────────────────────────────────────────────────
+# 1) Build & PUSH the package via /v2/ (Ubuntu)
+# ────────────────────────────────────────────────────────────────
   push-v2:
     runs-on: ubuntu-latest
     outputs:
-      pkg_version: ${{ steps.meta.outputs.version }}
+      pkg_version: ${{ steps.pack.outputs.version }}
+
     steps:
       - uses: actions/checkout@v4
 
-      # OIDC – gives $CLOUDSMITH_API_KEY
-      - uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
+      - name: Authenticate (OIDC)
+        uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
         with:
-          oidc-namespace:    ${{ env.CS_ORG }}
+          oidc-namespace:   ${{ env.CS_ORG }}
           oidc-service-slug: ${{ env.SERVICE }}
-          oidc-auth-only:    'true'
+          oidc-auth-only:   true      # sets $CLOUDSMITH_API_KEY
 
       - uses: actions/setup-dotnet@v3
         with: { dotnet-version: '7.0.x' }
 
+      # overwrite/refresh the dummy project
       - name: Create dummy lib
         run: dotnet new classlib -n ${{ env.PACKAGE_ID }} --force
 
-      - name: Pack version
-        id: meta
+      - name: Pack
+        id: pack
         run: |
-          VERSION="1.0.0-CSTEST-${{ github.run_number }}"
-          dotnet pack ${{ env.PACKAGE_ID }}/${{ env.PACKAGE_ID }}.csproj \
-            -p:PackageVersion=$VERSION \
+          dotnet pack "${{ env.PACKAGE_ID }}/${{ env.PACKAGE_ID }}.csproj" \
+            -p:PackageVersion="${{ env.PACKAGE_VER }}" \
             --output ./out
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=${{ env.PACKAGE_VER }}" >> "$GITHUB_OUTPUT"
 
-      # PUSH via v2  
-      - name: Push to Cloudsmith (/v2/)
-        continue-on-error: true            # let pipeline carry on after 409
+      - name: Push via /v2/   # skips dupes, never fails
+        continue-on-error: true
         run: |
           dotnet nuget push ./out/*.nupkg \
-          --api-key "$CLOUDSMITH_API_KEY" \
-          --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v2/" \
-          --skip-duplicate
-# ------------------------------------------------------------------
-# 2) Pull the same package THROUGH /v2/ (Windows) – expected 404
-# ------------------------------------------------------------------
+            --api-key "$CLOUDSMITH_API_KEY" \
+            --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v2/" \
+            --skip-duplicate
+
+# ────────────────────────────────────────────────────────────────
+# 2) INSTALL the same package via /v2/ (Windows)
+# ────────────────────────────────────────────────────────────────
   pull-v2:
     needs: push-v2
     runs-on: windows-latest
-    
+    env:
+      PACKAGE_VER: ${{ needs.push-v2.outputs.pkg_version }}
+
     steps:
-      - uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
+      - name: Authenticate (OIDC)
+        uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
         with:
-          oidc-namespace:    ${{ env.CS_ORG }}
+          oidc-namespace:   ${{ env.CS_ORG }}
           oidc-service-slug: ${{ env.SERVICE }}
-          oidc-auth-only:    'true'
+          oidc-auth-only:   true
 
       - name: Add Cloudsmith v2 source
         shell: pwsh
@@ -85,9 +92,8 @@ jobs:
       - name: Install via /v2/
         shell: pwsh
         run: |
-          nuget.exe install MyProject `
-            -Version 1.0.0-ci.23 `
+          nuget.exe install $Env:PACKAGE_ID `
+            -Version $Env:PACKAGE_VER `
             -Source CloudsmithV2 `
             -OutputDirectory .\packages `
             -Verbosity detailed
-
