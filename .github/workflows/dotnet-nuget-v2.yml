@@ -92,10 +92,12 @@ jobs:
         shell: pwsh
         run: nuget.exe locals all -clear
 
-      - name: Install via v2  (will 404 if bug exists)
+      - name: Install via /v2/
         shell: pwsh
         run: |
-          nuget.exe install $Env:PACKAGE_ID `
-            -Version $Env:PACKAGE_VER `
+          nuget.exe install MyProject `
+            -Version 1.0.0-ci.23 `
             -Source CloudsmithV2 `
+            -OutputDirectory .\packages `
             -Verbosity detailed
+
