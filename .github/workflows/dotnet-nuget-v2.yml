@@ -1,0 +1,32 @@
+# .github/workflows/dotnet-build-publish.yml
+# (append after your existing build-and-publish job)
+
+  test-consume-v2:
+    name: Pull package via NuGet v2
+    runs-on: windows-latest            # nuget.exe is pre-installed on the MS-hosted runner
+    needs: build-and-publish           # waits for the package push to finish
+    env:
+      CS_ORG:  ${{ env.CS_ORG }}
+      CS_REPO: ${{ env.CS_REPO }}
+
+    steps:
+      - name: Set up Cloudsmith v2 source
+        run: |
+          nuget sources Add ^
+            -Name CloudsmithV2 ^
+            -Source "https://nuget.cloudsmith.io/%CS_ORG%/%CS_REPO%/v2/" ^
+            -Username token ^
+            -Password "$env:CLOUDSMITH_API_KEY" ^
+            -StorePasswordInClearText
+          nuget sources List
+
+      - name: Clear local NuGet caches (sanity)
+        run: nuget locals all -clear
+
+      - name: Install test package from v2
+        run: |
+          nuget install Microgame.Commission.Domain `
+            -Version 12.9.9-CS-TEST-feature.STSK0132743 `
+            -Source CloudsmithV2 `
+            -OutputDirectory .\packages `
+            -Verbosity detailed
