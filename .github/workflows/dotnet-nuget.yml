@@ -14,6 +14,7 @@ env:
   CS_ORG: globex-innovations         # Your Cloudsmith organization/workspace
   CS_REPO: acme-nonprod      # Your Cloudsmith repository slug
   SERVICE: ci_acme_service   # Your Cloudsmith OIDC 'Service Slug'
+  VERSION_SUFFIX: "ci.${{ github.run_number }}"     # eg 1.0.0-ci.42
 
 jobs:
   build-and-publish:
@@ -73,8 +74,15 @@ jobs:
         run: dotnet test MySolution.sln --configuration Release --no-build
 
       # 7) Pack the project into a .nupkg
-      - name: Pack
-        run: dotnet pack MyProject/MyProject.csproj --configuration Release --output ./artifacts --no-build
+      #- name: Pack
+      #  run: dotnet pack MyProject/MyProject.csproj --configuration Release --output ./artifacts --no-build
+      - name: Pack (auto-version)
+        run: |
+          dotnet pack MyProject/MyProject.csproj \
+          -p:PackageVersion=1.0.0-$VERSION_SUFFIX \
+          --configuration Release \
+          --output ./artifacts \
+          --no-build
 
       # 8) Push the .nupkg to Cloudsmith
       - name: Push to Cloudsmith
