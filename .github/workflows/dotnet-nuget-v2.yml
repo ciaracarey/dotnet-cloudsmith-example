@@ -1,4 +1,4 @@
-name: .NET Build and Publish
+name: .Nuget v2 Build and Publish
 
 on:
   push:
