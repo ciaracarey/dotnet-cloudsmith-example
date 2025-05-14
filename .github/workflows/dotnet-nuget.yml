@@ -10,7 +10,7 @@ permissions:
   contents: read
   id-token: write  # Required for OIDC with Cloudsmith
 
-env:
+env: 
   CS_ORG: ciara-demo         # Your Cloudsmith organization/namespace
   CS_REPO: acme-nonprod      # Your Cloudsmith repository slug
   SERVICE: ci_acme_service   # Your Cloudsmith OIDC 'Service Slug'
