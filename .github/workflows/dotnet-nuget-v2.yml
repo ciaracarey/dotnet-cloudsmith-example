@@ -36,8 +36,8 @@ jobs:
 
       - name: Create dummy lib
         run: |
-          dotnet new classlib -n ${{ env.PACKAGE_ID }}
-          mv ${{ env.PACKAGE_ID }} ${{ env.PACKAGE_ID }}.src
+          dotnet new classlib -n ${{ env.PACKAGE_ID }} --force
+          mv -f ${{ env.PACKAGE_ID }} ${{ env.PACKAGE_ID }}.src
 
       # pack with MIXED-CASE prerelease using run_number
       - name: Pack version
