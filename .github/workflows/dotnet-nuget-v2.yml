@@ -1,7 +1,11 @@
 name: NuGet v2 test (push & pull)
 
-on: workflow_dispatch: {}
-
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+    
 permissions:
   contents: read
   id-token: write    # OIDC for Cloudsmith
