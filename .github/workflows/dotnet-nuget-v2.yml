@@ -1,131 +1,101 @@
-name: .Nuget v2 Build and Publish
+name: NuGet v2 mixed-case bug repro (push & pull via /v2/)
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch: {}          # run manually
 
 permissions:
   contents: read
-  id-token: write        # OIDC with Cloudsmith
+  id-token: write                # OIDC for Cloudsmith
 
 env:
   CS_ORG:   globex-innovations
   CS_REPO:  acme-nonprod
   SERVICE:  ci_acme_service
+  PACKAGE_ID: MyProject          # dummy project name
 
 jobs:
-  # ------------------------------------------------------------------
-  # 1) Build / pack / push on Ubuntu
-  # ------------------------------------------------------------------
-  build-and-publish:
+# ------------------------------------------------------------------
+# 1) Pack and push THROUGH /v2/  (Ubuntu)
+# ------------------------------------------------------------------
+  push-v2:
     runs-on: ubuntu-latest
+    outputs:
+      pkg_version: ${{ steps.meta.outputs.version }}
     steps:
-      # 0) Checkout
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 1) OIDC auth for a short-lived API key
-      - name: Authenticate with Cloudsmith (OIDC)
-        uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
-        with:
-          oidc-namespace:    ${{ env.CS_ORG }}
-          oidc-service-slug: ${{ env.SERVICE }}
-          oidc-auth-only:    'true'          # sets $CLOUDSMITH_API_KEY
-
-      # 2) NuGet.config that points at the v3 feed
-      - name: Create NuGet.config
-        run: |
-          cat > NuGet.config <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <packageSources>
-              <clear/>
-              <add key="Cloudsmith" value="https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json" />
-            </packageSources>
-            <packageSourceCredentials>
-              <Cloudsmith>
-                <add key="Username" value="token" />
-                <add key="ClearTextPassword" value="${CLOUDSMITH_API_KEY}" />
-              </Cloudsmith>
-            </packageSourceCredentials>
-          </configuration>
-          EOF
-
-      # 3) Restore
-      - name: Restore
-        run: dotnet restore MySolution.sln --configfile NuGet.config
-
-      # 4) Build
-      - name: Build
-        run: dotnet build MySolution.sln --configuration Release --no-restore
-
-      # 5) Pack (auto-version) — absolute output dir
-      - name: Pack (auto-version)
-        env:
-          VERSION_SUFFIX: "ci.${{ github.run_number }}"
-        run: |
-          mkdir -p ${{ github.workspace }}/artifacts
-          dotnet pack MyProject/MyProject.csproj \
-            -p:PackageVersion=1.0.0-$VERSION_SUFFIX \
-            --configuration Release \
-            --output ${{ github.workspace }}/artifacts \
-            --no-build
-
-      # 6) Push to Cloudsmith (skip dupes)
-      - name: Push to Cloudsmith
-        run: |
-          dotnet nuget push ${{ github.workspace }}/artifacts/*.nupkg \
-            --api-key "$CLOUDSMITH_API_KEY" \
-            --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v3/index.json" \
-            --skip-duplicate
-
-  # ------------------------------------------------------------------
-  # 2) Pull the same package via the v2 endpoint on Windows
-  # ------------------------------------------------------------------
-  pull-and-verify-v2:
-    name: Pull package via NuGet v2 (OIDC)
-    runs-on: windows-latest
-    needs: build-and-publish
-
-    env:
-      CS_ORG:   globex-innovations
-      CS_REPO:  acme-nonprod
-      SERVICE:  ci_acme_service
-
-    steps:
-      # 1) OIDC auth
-      - name: Authenticate with Cloudsmith (OIDC)
-        uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
+      # OIDC – gives $CLOUDSMITH_API_KEY
+      - uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
         with:
           oidc-namespace:    ${{ env.CS_ORG }}
           oidc-service-slug: ${{ env.SERVICE }}
           oidc-auth-only:    'true'
 
-      # 2) Add the v2 feed
+      - uses: actions/setup-dotnet@v3
+        with: { dotnet-version: '7.0.x' }
+
+      - name: Create dummy lib
+        run: |
+          dotnet new classlib -n ${{ env.PACKAGE_ID }}
+          mv ${{ env.PACKAGE_ID }} ${{ env.PACKAGE_ID }}.src
+
+      # pack with MIXED-CASE prerelease using run_number
+      - name: Pack version
+        id: meta
+        run: |
+          VERSION="1.0.0-CSTEST-${{ github.run_number }}"
+          dotnet pack ${{ env.PACKAGE_ID }}.src/${{ env.PACKAGE_ID }}.src.csproj \
+            -p:PackageVersion=$VERSION \
+            --output ./out
+          echo "Packed $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # PUSH via v2  👈
+      - name: Push to Cloudsmith (/v2/)
+        run: |
+          dotnet nuget push ./out/*.nupkg \
+            --api-key "$CLOUDSMITH_API_KEY" \
+            --source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v2/" \
+            --skip-duplicate
+
+# ------------------------------------------------------------------
+# 2) Pull the same package THROUGH /v2/ (Windows) – expected 404
+# ------------------------------------------------------------------
+  pull-v2:
+    needs: push-v2
+    runs-on: windows-latest
+    env:
+      CS_ORG:   ${{ env.CS_ORG }}
+      CS_REPO:  ${{ env.CS_REPO }}
+      SERVICE:  ${{ env.SERVICE }}
+      PACKAGE_ID:  ${{ env.PACKAGE_ID }}
+      PACKAGE_VER: ${{ needs.push-v2.outputs.pkg_version }}
+
+    steps:
+      - uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
+        with:
+          oidc-namespace:    ${{ env.CS_ORG }}
+          oidc-service-slug: ${{ env.SERVICE }}
+          oidc-auth-only:    'true'
+
       - name: Add Cloudsmith v2 source
         shell: pwsh
         run: |
           nuget.exe sources Add `
             -Name CloudsmithV2 `
-            -Source "https://nuget.cloudsmith.io/${{ env.CS_ORG }}/${{ env.CS_REPO }}/v2/" `
+            -Source "https://nuget.cloudsmith.io/${Env:CS_ORG}/${Env:CS_REPO}/v2/" `
             -Username token `
             -Password "$Env:CLOUDSMITH_API_KEY" `
             -StorePasswordInClearText
-          nuget.exe sources List
 
-      # 3) Clear caches
-      - name: Clear NuGet caches
+      - name: Clear cache
         shell: pwsh
         run: nuget.exe locals all -clear
 
-      # 4) Install through v2
-      - name: Install package from v2
+      - name: Install via v2  (will 404 if bug exists)
         shell: pwsh
         run: |
-          nuget.exe install Microgame.Commission.Domain `
-            -Version 12.9.9-CS-TEST-feature.STSK0132743 `
+          nuget.exe install $Env:PACKAGE_ID `
+            -Version $Env:PACKAGE_VER `
             -Source CloudsmithV2 `
-            -OutputDirectory .\packages `
             -Verbosity detailed
