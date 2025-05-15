@@ -1,0 +1,53 @@
+name: NuGet v2 – repro
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+    
+permissions:
+  contents: read
+  id-token: write              # OIDC for Cloudsmith
+
+env:
+  CS_ORG:   globex-innovations    # <-- change if needed
+  CS_REPO:  acme-nonprod          # <-- change if needed
+  SERVICE:  ci_acme_service
+  PACKAGE_ID:  Microgame.Commission.Domain
+  PACKAGE_VER: 12.9.9-CS-TEST-feature.STSK0132743
+
+jobs:
+# ──────────────────────────────────────────────────────────
+# 1) Build & PUSH the  package through /v2/ (Ubuntu)
+# ──────────────────────────────────────────────────────────
+  push-v2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cloudsmith-io/cloudsmith-cli-action@v1.0.2
+        with:
+          oidc-namespace:   ${{ env.CS_ORG }}
+          oidc-service-slug: ${{ env.SERVICE }}
+          oidc-auth-only:   true      # sets $CLOUDSMITH_API_KEY
+
+      - uses: actions/setup-dotnet@v3
+        with: { dotnet-version: '7.0.x' }
+
+      # overwrite/refresh the exact project
+      - name: Create stub lib
+        run: |
+          dotnet new classlib -n "${{ env.PACKAGE_ID }}" --force
+          rm -f "${{ env.PACKAGE_ID }}/Program.cs"     # remove console stub
+
+      - name: Pack version
+        run: |
+          dotnet pack "${{ env.PACKAGE_ID }}/${{ env.PACKAGE_ID }}.csproj" \
+            -p:PackageVersion="${{ env.PACKAGE_VER }}" \
+            --output ./out
+
+      - name: Push via /v2/
+        continue-on-error: true         # skip 409 if it already exists
+        run: |
+          dotnet nuget push ./out/*.nupkg*
