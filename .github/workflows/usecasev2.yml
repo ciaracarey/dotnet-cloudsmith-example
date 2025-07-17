@@ -13,7 +13,7 @@ permissions:
 env:
   CS_ORG:   globex-innovations    # <-- change if needed
   CS_REPO:  abigproject-nonprod          # <-- change if needed
-  SERVICE:  ci_abigproject_service
+  SERVICE:  ci_abigproduct_service
   PACKAGE_ID:  Microgame.Commission.Domain
   PACKAGE_VER: 12.9.9-CS-TEST-feature.STSK0132743
 
