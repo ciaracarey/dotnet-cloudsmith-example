@@ -1,0 +1,51 @@
+# Build, pack, and publish a NuGet package to Cloudsmith
+
+trigger:
+- main
+pr:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  CLOUDSMITH_ORG: globex-innovations
+  CLOUDSMITH_REPO: acme-nonprod
+  # Version scheme: 1.0.<Azure Build ID>. Adjust as desired.
+  PKG_VERSION: 1.0.$(Build.BuildId)
+
+steps:
+- checkout: self
+
+# Use a recent .NET SDK (can build net7.0 projects)
+- task: UseDotNet@2
+  displayName: "Use .NET SDK 8.x"
+  inputs:
+    packageType: 'sdk'
+    version: '8.x'
+
+# If you ever consume *private* Cloudsmith NuGet deps, uncomment the 3 lines below to add the source for restore:
+# - script: |
+#     dotnet nuget add source "https://$(CLOUDSMITH_ORG).dummy/$(CLOUDSMITH_REPO)/v3/index.json" -n cloudsmith \
+#       -u token -p $(CS_API_KEY) --store-password-in-clear-text
+#   displayName: "Add Cloudsmith source (for private deps)"
+
+- script: |
+    dotnet restore MySolution.sln
+    dotnet build MySolution.sln -c Release --no-restore
+  displayName: "Restore and Build"
+
+# Pack MyProject into a .nupkg; force IsPackable in case the project type defaults to false
+- script: |
+    dotnet pack MyProject/MyProject.csproj -c Release --no-build \
+      -o "$(Build.ArtifactStagingDirectory)" \
+      -p:PackageVersion=$(PKG_VERSION) -p:IsPackable=true
+  displayName: "Pack NuGet"
+
+# Publish the .nupkg to Cloudsmith
+- script: |
+    dotnet nuget push "$(Build.ArtifactStagingDirectory)/*.nupkg" \
+      -k $(CS_API_KEY) \
+      -s "https://nuget.cloudsmith.io/$(CLOUDSMITH_ORG)/$(CLOUDSMITH_REPO)/v3/index.json" \
+      --skip-duplicate
+  displayName: "Push to Cloudsmith"
