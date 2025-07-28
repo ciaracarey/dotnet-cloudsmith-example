@@ -1,5 +1,4 @@
 # Build, pack, and publish a NuGet package to Cloudsmith
-# Repo: globex-innovations/acme-nonprod
 
 trigger:
 - main
@@ -12,76 +11,41 @@ pool:
 variables:
   CLOUDSMITH_ORG: globex-innovations
   CLOUDSMITH_REPO: acme-nonprod
-  # Package version: change as you like (SemVer-compatible)
+  # Version scheme: 1.0.<Azure Build ID>. Adjust as desired.
   PKG_VERSION: 1.0.$(Build.BuildId)
 
 steps:
 - checkout: self
 
-# .NET SDK 8.x can build net7.0 projects; switch to 7.x if you prefer
+# Use a recent .NET SDK (can build net7.0 projects)
 - task: UseDotNet@2
   displayName: "Use .NET SDK 8.x"
   inputs:
     packageType: 'sdk'
     version: '8.x'
 
-# Configure NuGet sources on the agent (Cloudsmith + NuGet.org)
-# We remove/re-add to keep a clean, deterministic set of sources each run.
-- script: |
-    set -euo pipefail
-    dotnet nuget remove source cloudsmith || true
-    dotnet nuget add source "https://nuget.cloudsmith.io/$(CLOUDSMITH_ORG)/$(CLOUDSMITH_REPO)/v3/index.json" \
-      -n cloudsmith -u token -p "$(CS_API_KEY)" --store-password-in-clear-text
-    dotnet nuget remove source nuget || true
-    dotnet nuget add source "https://api.nuget.org/v3/index.json" -n nuget
-    echo "Configured NuGet sources:"
-    dotnet nuget list source
-  displayName: "Configure NuGet sources"
-  env:
-    CS_API_KEY: $(CS_API_KEY)
+# If you ever consume *private* Cloudsmith NuGet deps, uncomment the 3 lines below to add the source for restore:
+# - script: |
+#     dotnet nuget add source "https://$(CLOUDSMITH_ORG).dummy/$(CLOUDSMITH_REPO)/v3/index.json" -n cloudsmith \
+#       -u token -p $(CS_API_KEY) --store-password-in-clear-text
+#   displayName: "Add Cloudsmith source (for private deps)"
 
-# Restore from the configured sources (no --source so it uses the list above)
 - script: |
-    set -euo pipefail
     dotnet restore MySolution.sln
-  displayName: "Restore"
-
-# Optional: show resolved packages incl. transitives (useful for debugging)
-- script: |
-    set -euo pipefail
-    dotnet list MyProject/MyProject.csproj package --include-transitive || true
-  displayName: "List resolved packages (diagnostic)"
-
-# Build
-- script: |
-    set -euo pipefail
     dotnet build MySolution.sln -c Release --no-restore
-  displayName: "Build"
+  displayName: "Restore and Build"
 
-# Pack MyProject
+# Pack MyProject into a .nupkg; force IsPackable in case the project type defaults to false
 - script: |
-    set -euo pipefail
     dotnet pack MyProject/MyProject.csproj -c Release --no-build \
       -o "$(Build.ArtifactStagingDirectory)" \
       -p:PackageVersion=$(PKG_VERSION) -p:IsPackable=true
-    echo "Packed artifacts:"
-    ls -la "$(Build.ArtifactStagingDirectory)"
   displayName: "Pack NuGet"
 
-# Publish the nupkg as a pipeline artifact (handy for downloads)
-- task: PublishBuildArtifacts@1
-  displayName: "Publish .nupkg as artifact"
-  inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-    ArtifactName: 'nupkg'
-
-# Push package to Cloudsmith (idempotent via --skip-duplicate)
+# Publish the .nupkg to Cloudsmith
 - script: |
-    set -euo pipefail
     dotnet nuget push "$(Build.ArtifactStagingDirectory)/*.nupkg" \
-      -k "$(CS_API_KEY)" \
+      -k $(CS_API_KEY) \
       -s "https://nuget.cloudsmith.io/$(CLOUDSMITH_ORG)/$(CLOUDSMITH_REPO)/v3/index.json" \
       --skip-duplicate
   displayName: "Push to Cloudsmith"
-  env:
-    CS_API_KEY: $(CS_API_KEY)
