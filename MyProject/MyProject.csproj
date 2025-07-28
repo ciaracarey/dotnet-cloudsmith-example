@@ -8,8 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="System.Text.Json" Version="8.0.4" />
-    <PackageReference Include="log4net" Version="2.0.10" />  <!-- Known Vulnerability -->
+    <PackageReference Include="System.Text.Json" Version="7.0.3" />
+    <PackageReference Include="log4net" Version="2.0.8" />  <!-- Known Vulnerability -->
   </ItemGroup>
 
 </Project>
